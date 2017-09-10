@@ -1,10 +1,10 @@
 package main
 
 import (
-	"archive/tar"
-	"compress/gzip"
+	"bufio"
 	"flag"
 	"fmt"
+	"io"
 	"log"
 	"net/mail"
 	"os"
@@ -23,7 +23,7 @@ type statisticGroup struct {
 }
 
 func main() {
-	inputfile := flag.String("archive", "example-UNSAFE.tar.gz", "The archive you want to read")
+	inputfile := flag.String("mbox", "in.mbox", "The archive you want to read")
 	flag.Parse()
 
 	f, err := os.Open(*inputfile)
@@ -32,25 +32,13 @@ func main() {
 		log.Fatalf("Unable to open archive file, %s", err.Error())
 	}
 
-	gzr, err := gzip.NewReader(f)
+	input := make(chan io.Reader)
+	go mboxreader(f, input)
 
-	if err != nil {
-		log.Fatalf("Unable to gzip decompress archive, %s", err.Error())
-	}
-
-	tarreader := tar.NewReader(gzr)
 	statisticMap := make(map[string]statisticGroup)
-	for {
-		fileinfo, err := tarreader.Next()
-		if err != nil {
-			break
-		}
-
-		if !strings.Contains(fileinfo.Name, ".mbox") && !strings.Contains(fileinfo.Name, ".txt") {
-			continue
-		}
-
-		msg, err := mail.ReadMessage(tarreader)
+	for mailreader := range input {
+		fmt.Print(".")
+		msg, err := mail.ReadMessage(mailreader)
 		if err != nil {
 			log.Printf("Failed to read message (1) %s", err.Error())
 			continue
@@ -82,5 +70,42 @@ func main() {
 
 	for k, v := range statisticMap {
 		fmt.Printf("%s,%d,%d,%d\n", k, v.V6Count, v.V4Count, v.Total)
+	}
+}
+
+func mboxreader(r io.Reader, out chan io.Reader) {
+	bio := bufio.NewReader(r)
+
+	mail := ""
+	bytes := 0
+	toobig := false
+	for {
+		ln, _, err := bio.ReadLine()
+		if err != nil {
+			close(out)
+			return
+		}
+
+		if strings.HasPrefix(string(ln), "From ") {
+			// reset and send the reader down
+			if toobig {
+				log.Printf("Jumbo email! Was %d bytes / %d MB long", bytes, bytes/1024/1024)
+			}
+			nr := strings.NewReader(mail)
+			out <- nr
+			mail = ""
+			bytes = 0
+			toobig = false
+			continue
+		} else {
+			if !toobig {
+				mail += string(ln) + "\n"
+			}
+			bytes += len(ln)
+		}
+
+		if bytes > 1.5*1024*1024 {
+			toobig = true
+		}
 	}
 }
