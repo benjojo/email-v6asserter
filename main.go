@@ -12,14 +12,15 @@ import (
 	"strings"
 )
 
-var v4r = regexp.MustCompile("client-ip=\\d{1,3}\\.\\d{1,3}\\.\\d{1,3}\\.\\d{1,3}")
-var v6r = regexp.MustCompile("client-ip=(([0-9a-fA-F]{1,4}:){7,7}[0-9a-fA-F]{1,4}|([0-9a-fA-F]{1,4}:){1,7}:|([0-9a-fA-F]{1,4}:){1,6}:[0-9a-fA-F]{1,4}|([0-9a-fA-F]{1,4}:){1,5}(:[0-9a-fA-F]{1,4}){1,2}|([0-9a-fA-F]{1,4}:){1,4}(:[0-9a-fA-F]{1,4}){1,3}|([0-9a-fA-F]{1,4}:){1,3}(:[0-9a-fA-F]{1,4}){1,4}|([0-9a-fA-F]{1,4}:){1,2}(:[0-9a-fA-F]{1,4}){1,5}|[0-9a-fA-F]{1,4}:((:[0-9a-fA-F]{1,4}){1,6})|:((:[0-9a-fA-F]{1,4}){1,7}|:)|fe80:(:[0-9a-fA-F]{0,4}){0,4}%[0-9a-zA-Z]{1,}|::(ffff(:0{1,4}){0,1}:){0,1}((25[0-5]|(2[0-4]|1{0,1}[0-9]){0,1}[0-9])\\.){3,3}(25[0-5]|(2[0-4]|1{0,1}[0-9]){0,1}[0-9])|([0-9a-fA-F]{1,4}:){1,4}:((25[0-5]|(2[0-4]|1{0,1}[0-9]){0,1}[0-9])\\.){3,3}(25[0-5]|(2[0-4]|1{0,1}[0-9]){0,1}[0-9]))")
+var v4r = regexp.MustCompile("(client-ip=|designates )\\d{1,3}\\.\\d{1,3}\\.\\d{1,3}\\.\\d{1,3}")
+var v6r = regexp.MustCompile("(client-ip=|designates )(([0-9a-fA-F]{1,4}:){7,7}[0-9a-fA-F]{1,4}|([0-9a-fA-F]{1,4}:){1,7}:|([0-9a-fA-F]{1,4}:){1,6}:[0-9a-fA-F]{1,4}|([0-9a-fA-F]{1,4}:){1,5}(:[0-9a-fA-F]{1,4}){1,2}|([0-9a-fA-F]{1,4}:){1,4}(:[0-9a-fA-F]{1,4}){1,3}|([0-9a-fA-F]{1,4}:){1,3}(:[0-9a-fA-F]{1,4}){1,4}|([0-9a-fA-F]{1,4}:){1,2}(:[0-9a-fA-F]{1,4}){1,5}|[0-9a-fA-F]{1,4}:((:[0-9a-fA-F]{1,4}){1,6})|:((:[0-9a-fA-F]{1,4}){1,7}|:)|fe80:(:[0-9a-fA-F]{0,4}){0,4}%[0-9a-zA-Z]{1,}|::(ffff(:0{1,4}){0,1}:){0,1}((25[0-5]|(2[0-4]|1{0,1}[0-9]){0,1}[0-9])\\.){3,3}(25[0-5]|(2[0-4]|1{0,1}[0-9]){0,1}[0-9])|([0-9a-fA-F]{1,4}:){1,4}:((25[0-5]|(2[0-4]|1{0,1}[0-9]){0,1}[0-9])\\.){3,3}(25[0-5]|(2[0-4]|1{0,1}[0-9]){0,1}[0-9]))")
 
 type statisticGroup struct {
-	V6Count  int
-	V4Count  int
-	TLSCount int
-	Total    int
+	V6Count          int
+	V6NotGoogleCount int
+	V4Count          int
+	TLSCount         int
+	Total            int
 }
 
 func main() {
@@ -56,20 +57,27 @@ func main() {
 		group := statisticMap[key]
 		if v6r.MatchString(InboundHeader) {
 			group.V6Count++
+
+			if !strings.Contains(InboundHeader, ".google.com designates") {
+				group.V6NotGoogleCount++
+			}
+
 		} else if v4r.MatchString(InboundHeader) {
 			group.V4Count++
 		} else {
-			log.Printf("Failed to read message (3) - %s", InboundHeader)
+			if InboundHeader != "" {
+				log.Printf("Failed to read message (3) - %s", InboundHeader)
+			}
 			continue
 		}
 		group.Total++
 		statisticMap[key] = group
 	}
 
-	fmt.Printf("Date,v6,v4,Total\n")
+	fmt.Printf("Date,v6,v6notgoogle,v4,Total\n")
 
 	for k, v := range statisticMap {
-		fmt.Printf("%s,%d,%d,%d\n", k, v.V6Count, v.V4Count, v.Total)
+		fmt.Printf("%s,%d,%d,%d,%d\n", k, v.V6Count, v.V6NotGoogleCount, v.V4Count, v.Total)
 	}
 }
 
