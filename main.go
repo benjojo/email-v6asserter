@@ -45,6 +45,14 @@ func main() {
 			continue
 		}
 
+		OldEmailHostingTest := msg.Header.Get("X-Spam-Report")
+		if strings.Contains(OldEmailHostingTest, "killersservers.co.uk") {
+			// my email ( ben@benjojo.co.uk ) is a little complex, since it
+			// was not always google apps. It was just a POP3 importer from my
+			// shared hosting. So I'm going to filter those out.
+			continue
+		}
+
 		InboundHeader := msg.Header.Get("Received-SPF")
 		time, err := msg.Header.Date()
 		if err != nil {
@@ -70,14 +78,21 @@ func main() {
 			}
 			continue
 		}
+
+		// try and find the TLS Header
+		for _, v := range msg.Header["Received"] {
+			if strings.Contains(v, "mx.google.com with ESMTPS") {
+				group.TLSCount++
+			}
+		}
 		group.Total++
 		statisticMap[key] = group
 	}
 
-	fmt.Printf("Date,v6,v6notgoogle,v4,Total\n")
+	fmt.Printf("Date,v6,v6notgoogle,v4,tls,Total\n")
 
 	for k, v := range statisticMap {
-		fmt.Printf("%s,%d,%d,%d,%d\n", k, v.V6Count, v.V6NotGoogleCount, v.V4Count, v.Total)
+		fmt.Printf("%s,%d,%d,%d,%d,%d\n", k, v.V6Count, v.V6NotGoogleCount, v.V4Count, v.TLSCount, v.Total)
 	}
 }
 
