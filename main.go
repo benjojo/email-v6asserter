@@ -54,6 +54,13 @@ func main() {
 			continue
 		}
 
+		From := msg.Header.Get("From")
+		if strings.Contains(From, "no-reply@cloudflare.com") {
+			// for two months I got an *incredible* amount of email from
+			// cloudflare that is enough to easily throw off metrics.
+			continue
+		}
+
 		InboundHeader := msg.Header.Get("Received-SPF")
 		time, err := msg.Header.Date()
 		if err != nil {
