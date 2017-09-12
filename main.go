@@ -19,6 +19,7 @@ type statisticGroup struct {
 	V6Count          int
 	V6NotGoogleCount int
 	V4Count          int
+	V4Providers      map[string]int
 	TLSCount         int
 	Total            int
 }
@@ -80,19 +81,52 @@ func main() {
 		}
 
 		// try and find the TLS Header
+		DeliveredWithTLS := false
+		Provider := ""
 		for _, v := range msg.Header["Received"] {
 			if strings.Contains(v, "mx.google.com with ESMTPS") {
-				group.TLSCount++
+				DeliveredWithTLS = true
+			}
+
+			if strings.Contains(v, "mandrillapp.com") {
+				Provider = "mandrill"
+			}
+
+			if strings.Contains(v, "sendgrid.net") {
+				Provider = "sendgrid"
+			}
+
+			if strings.Contains(v, "amazonses.com") {
+				Provider = "aws"
+			}
+
+			if strings.Contains(v, "rsgsv.net") {
+				Provider = "mailchimp"
 			}
 		}
+		if DeliveredWithTLS {
+			group.TLSCount++
+		}
+
+		if group.V4Providers == nil {
+			group.V4Providers = make(map[string]int)
+		}
+
+		if Provider != "" {
+			group.V4Providers[Provider]++
+		}
+
 		group.Total++
 		statisticMap[key] = group
 	}
 
-	fmt.Printf("Date,v6,v6notgoogle,v4,tls,Total\n")
+	fmt.Printf("Date,v6,v6notgoogle,v4,mandrill,sendgrid,aws,mailchimp,tls,Total\n")
 
 	for k, v := range statisticMap {
-		fmt.Printf("%s,%d,%d,%d,%d,%d\n", k, v.V6Count, v.V6NotGoogleCount, v.V4Count, v.TLSCount, v.Total)
+		fmt.Printf("%s,%d,%d,%d,%d,%d,%d,%d,%d,%d\n", k,
+			v.V6Count, v.V6NotGoogleCount, v.V4Count,
+			v.V4Providers["mandrill"], v.V4Providers["sendgrid"], v.V4Providers["aws"], v.V4Providers["mailchimp"],
+			v.TLSCount, v.Total)
 	}
 }
 
@@ -112,7 +146,7 @@ func mboxreader(r io.Reader, out chan io.Reader) {
 		if strings.HasPrefix(string(ln), "From ") {
 			// reset and send the reader down
 			if toobig {
-				log.Printf("Jumbo email! Was %d bytes / %d MB long", bytes, bytes/1024/1024)
+				// log.Printf("Jumbo email! Was %d bytes / %d MB long", bytes, bytes/1024/1024)
 			}
 			nr := strings.NewReader(mail)
 			out <- nr
@@ -127,7 +161,7 @@ func mboxreader(r io.Reader, out chan io.Reader) {
 			bytes += len(ln)
 		}
 
-		if bytes > 1.5*1024*1024 {
+		if bytes > 0.5*1024*1024 {
 			toobig = true
 		}
 	}
